@@ -1,10 +1,6 @@
-"""Scrape a brain.com.ua product with Selenium: search from the homepage,
+"""Scraping a brain.com.ua product with Selenium: search from the homepage,
 open the first result, collect all target fields, and store them into
-PostgreSQL via the Django ORM.
-
-Flow: open the homepage -> type the query into the search box -> click Find ->
-open the first search result -> expand the specifications tab -> parse the page.
-Everything is located via manually chosen XPath (no positional indexes).
+PostgreSQL via the Django ORM
 """
 
 import re
@@ -21,7 +17,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from load_django import *  # noqa: F401,F403  (bootstraps Django settings)
+from load_django import *  # noqa: F401,F403
 from parser_app.models import Product
 
 HOME_URL = 'https://brain.com.ua/'
@@ -35,7 +31,6 @@ USER_AGENT = (
 
 
 def to_price(text):
-    """Convert a raw price string like '32 999 ₴' into a Decimal, or None."""
     if not text:
         return None
     digits = re.sub(r'[^\d]', '', text)
@@ -48,15 +43,12 @@ def to_price(text):
 
 
 def normalize(text):
-    """Collapse whitespace runs (incl. non-breaking spaces) into one space."""
     if text is None:
         return None
     return re.sub(r'\s+', ' ', text).strip()
 
 
 def first_displayed(driver, xpath):
-    """Return the first visible element matching xpath (the page renders both a
-    mobile and a desktop copy of many nodes), or None if none is visible."""
     for element in driver.find_elements(By.XPATH, xpath):
         if element.is_displayed():
             return element
@@ -64,7 +56,6 @@ def first_displayed(driver, xpath):
 
 
 def count_spec_rows(driver):
-    """Count specification rows currently rendered as (label, value) pairs."""
     rows = 0
     for block in driver.find_elements(
             By.XPATH, "//*[contains(@class,'br-pr-chr-item')]"):
@@ -76,7 +67,6 @@ def count_spec_rows(driver):
 
 
 def build_driver():
-    """Create a configured headless Chrome WebDriver."""
     options = Options()
     options.add_argument('--headless=new')
     options.add_argument('--window-size=1400,1000')
@@ -86,21 +76,17 @@ def build_driver():
 
 
 def search_and_open_first(driver, wait):
-    """Run the homepage search and open the first product result."""
     driver.get(HOME_URL)
 
-    # The visible search box (a hidden duplicate exists for the mobile layout).
     search_box = wait.until(lambda d: first_displayed(
         d, "//input[@class='quick-search-input']"))
     search_box.click()
     search_box.send_keys(SEARCH_QUERY)
 
-    # The Find button labelled "Знайти" that appears with the quick-search panel.
     find_button = wait.until(lambda d: first_displayed(
         d, "//input[@type='submit' and @value='Знайти']"))
     find_button.click()
 
-    # Wait for the results grid, then open the first product card's name link.
     wait.until(EC.presence_of_element_located(
         (By.XPATH, "//div[contains(@class,'product-wrapper')]")))
     first_card = driver.find_element(
@@ -114,7 +100,6 @@ def search_and_open_first(driver, wait):
 
 
 def expand_specifications(driver, wait):
-    """Click the 'All specifications' control and wait for the full list."""
     try:
         expand = first_displayed(
             driver, "//span[normalize-space(text())='Всі характеристики']")
@@ -129,11 +114,6 @@ def expand_specifications(driver, wait):
 
 
 def parse_specifications(driver):
-    """Collect every characteristic from the specs blocks into a dictionary.
-
-    Each row holds two direct spans: the label and the value. Rows are matched
-    by structure (label span + value span), never by index.
-    """
     specifications = {}
     for block in driver.find_elements(
             By.XPATH, "//*[contains(@class,'br-pr-chr-item')]"):
@@ -149,14 +129,11 @@ def parse_specifications(driver):
 
 
 def parse_product(driver):
-    """Extract all required product fields from the current product page."""
     product = {}
 
-    # Full product title
     title_el = first_displayed(driver, "//h1")
     product['title'] = normalize(title_el.text) if title_el else None
 
-    # Product code: located by its label wrapper, value taken after the colon
     try:
         code_el = first_displayed(
             driver, "//div[contains(@class,'product-code-num')]")
@@ -164,7 +141,6 @@ def parse_product(driver):
     except (AttributeError, IndexError):
         product['product_code'] = None
 
-    # Number of reviews: parse the integer inside "Відгуки (N)"
     try:
         reviews_el = first_displayed(
             driver, "//li[contains(@class,'scroll-to-reviews')]")
@@ -172,7 +148,6 @@ def parse_product(driver):
     except (AttributeError, ValueError):
         product['reviews_count'] = None
 
-    # Regular price (current, displayed price)
     try:
         price_el = first_displayed(
             driver, "//div[contains(@class,'main-price-block')]")
@@ -180,8 +155,6 @@ def parse_product(driver):
     except AttributeError:
         current_price = None
 
-    # Promotional price: present only when an old (crossed) price exists.
-    # Then the crossed price is the regular one and the current one is promo.
     try:
         old_el = first_displayed(
             driver, "//div[contains(@class,'br-pr-old-price')]")
@@ -196,7 +169,6 @@ def parse_product(driver):
         product['regular_price'] = current_price
         product['promo_price'] = None
 
-    # All product photo URLs collected into a list (order preserved, unique)
     photos = []
     for img in driver.find_elements(
             By.XPATH, "//img[contains(@class,'br-main-img')]"):
@@ -205,11 +177,9 @@ def parse_product(driver):
             photos.append(src)
     product['photos'] = photos
 
-    # Full specifications collected as a dictionary
     specifications = parse_specifications(driver)
     product['specifications'] = specifications
 
-    # Fields derived from specifications, matched by their label (not index)
     product['color'] = specifications.get('Колір')
     product['memory'] = specifications.get("Вбудована пам'ять")
     product['manufacturer'] = specifications.get('Виробник')
@@ -222,7 +192,6 @@ def parse_product(driver):
 
 
 def save_product(product):
-    """Store the parsed product into the database via the Django ORM."""
     Product.objects.update_or_create(
         product_code=product['product_code'],
         defaults=product,

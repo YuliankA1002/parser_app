@@ -1,4 +1,4 @@
-"""Admin registration for parser_app models."""
+"""Admin registration for parser_app models"""
 
 from django.contrib import admin
 

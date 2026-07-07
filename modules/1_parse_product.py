@@ -1,5 +1,5 @@
-"""Parse a single brain.com.ua product page with Requests + BeautifulSoup4
-and store the collected data into PostgreSQL via the Django ORM."""
+"""Parsing a single brain.com.ua product page with Requests + BeautifulSoup4
+and store the collected data into PostgreSQL via the Django ORM"""
 
 import re
 from decimal import Decimal, InvalidOperation
@@ -8,7 +8,7 @@ from pprint import pprint
 import requests
 from bs4 import BeautifulSoup
 
-from load_django import *  # noqa: F401,F403  (bootstraps Django settings)
+from load_django import *  # noqa: F401,F403
 from parser_app.models import Product
 
 PRODUCT_URL = (
@@ -37,7 +37,6 @@ HEADERS = {
 
 
 def to_price(text):
-    """Convert a raw price string like '65 799 ₴' into a Decimal, or None."""
     if not text:
         return None
     digits = re.sub(r'[^\d]', '', text)
@@ -50,18 +49,12 @@ def to_price(text):
 
 
 def normalize(text):
-    """Collapse whitespace runs (incl. non-breaking spaces) into one space."""
     if text is None:
         return None
     return re.sub(r'\s+', ' ', text).strip()
 
 
 def parse_specifications(soup):
-    """Collect every characteristic from the specs blocks into a dictionary.
-
-    Each characteristic row holds two direct spans: the label and the value.
-    Rows are matched by structure (label span + value span), never by index.
-    """
     specifications = {}
     for block in soup.select('.br-pr-chr-item'):
         for row in block.find_all('div'):
@@ -76,7 +69,6 @@ def parse_specifications(soup):
 
 
 def parse_product(html):
-    """Extract all required product fields from the page HTML."""
     soup = BeautifulSoup(html, 'lxml')
     product = {}
 
@@ -86,7 +78,6 @@ def parse_product(html):
     except AttributeError:
         product['title'] = None
 
-    # Product code: located by its label wrapper, value taken after the colon
     try:
         code_block = soup.find('div', attrs={'class': 'product-code-num'})
         code_text = code_block.get_text(strip=True)
@@ -94,7 +85,6 @@ def parse_product(html):
     except (AttributeError, IndexError):
         product['product_code'] = None
 
-    # Number of reviews: parse the integer inside "Відгуки (N)"
     try:
         reviews_block = soup.find('li', attrs={'class': 'scroll-to-reviews'})
         reviews_text = reviews_block.get_text(strip=True)
@@ -102,15 +92,12 @@ def parse_product(html):
     except (AttributeError, ValueError):
         product['reviews_count'] = None
 
-    # Regular price (current, displayed price)
     try:
         price_block = soup.find('div', attrs={'class': 'main-price-block'})
         current_price = to_price(price_block.get_text(' ', strip=True))
     except AttributeError:
         current_price = None
 
-    # Promotional price: present only when an old (crossed) price exists.
-    # Then the crossed price is the regular one and the current one is promo.
     try:
         old_block = soup.find('div', attrs={'class': 'br-pr-old-price'})
         old_price = to_price(old_block.get_text(' ', strip=True))
@@ -124,7 +111,6 @@ def parse_product(html):
         product['regular_price'] = current_price
         product['promo_price'] = None
 
-    # All product photo URLs collected into a list (order preserved, unique)
     try:
         photos = []
         for img in soup.select('img.br-main-img'):
@@ -135,11 +121,9 @@ def parse_product(html):
     except AttributeError:
         product['photos'] = []
 
-    # Full specifications collected as a dictionary
     specifications = parse_specifications(soup)
     product['specifications'] = specifications
 
-    # Fields derived from specifications, matched by their label (not index)
     product['color'] = specifications.get('Колір')
     product['memory'] = specifications.get("Вбудована пам'ять")
     product['manufacturer'] = specifications.get('Виробник')
@@ -153,7 +137,6 @@ def parse_product(html):
 
 
 def save_product(product):
-    """Store the parsed product into the database via the Django ORM."""
     Product.objects.update_or_create(
         product_code=product['product_code'],
         defaults=product,

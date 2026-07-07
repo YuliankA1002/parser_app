@@ -1,10 +1,9 @@
-"""Database models for scraped brain.com.ua product data."""
+"""Database models for scraped brain.com.ua product data"""
 
 from django.db import models
 
 
 class Product(models.Model):
-    """A single product parsed from a brain.com.ua product page."""
 
     product_code = models.CharField(max_length=64, unique=True)
     title = models.CharField(max_length=512)
